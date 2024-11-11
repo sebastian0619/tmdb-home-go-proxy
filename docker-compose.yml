@@ -1,22 +1,34 @@
+version: '3.8'
 services:
   # 主机服务
   host:
     build: .
     environment:
-      - ROLE=host                           # 设置角色为 host
-      - BACKEND_HOSTS=192.168.1.10:3666,192.168.1.11:3666,192.168.1.12:3666  # 后台机的 IP:端口
-      - PORT=3666                           # 主机监听的端口
-    command: ["./proxy_service"]
-
-  # 后台机服务
-  backend-1:
-    build: .
-    environment:
-      - ROLE=backend                        # 设置角色为 backend
-      - TARGET_URL=https://www.themoviedb.org
-      - PORT=3666                           # 后台机监听的端口
+      - ROLE=host
+      - PORT=3666
+      - BACKEND_HOSTS=192.168.1.10:3666,192.168.1.11:3666,192.168.1.12:3666  # 替换为后台机的实际 IP
     ports:
       - "3666:3666"
     command: ["./proxy_service"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
+  # 后台机服务1
+  backend-1:
+    build: .
+    environment:
+      - ROLE=backend
+      - PORT=3666
+      - TARGET_URL=https://www.themoviedb.org
+    ports:
+      - "3666:3666"
+    command: ["./proxy_service"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
