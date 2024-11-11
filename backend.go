@@ -54,20 +54,39 @@ func handleBackendProxy(w http.ResponseWriter, r *http.Request) {
 		req.Header.Set("Origin", targetURL)
 	}
 
-	// ModifyResponse 用于捕获 403 错误
+	// ModifyResponse 用于捕获 HTML 响应并替换资源链接
 	proxy.ModifyResponse = func(resp *http.Response) error {
-		if resp.StatusCode == http.StatusForbidden {
-			body, _ := io.ReadAll(resp.Body)
-			writeLog(fmt.Sprintf("Received 403 response: %s", string(body)))
+		// 检查内容类型是否为 HTML
+		if strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
+			body, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				return err
+			}
+			// 关闭响应体并替换为新的内容
+			resp.Body.Close()
+
+			// 将目标 URL 替换为代理服务器地址
+			updatedBody := strings.ReplaceAll(
+				string(body),
+				"https://www.themoviedb.org",
+				fmt.Sprintf("http://%s", r.Host),
+			)
+			// 替换静态资源地址（如图片、CSS、JavaScript）
+			updatedBody = strings.ReplaceAll(
+				updatedBody,
+				"https://image.tmdb.org",
+				fmt.Sprintf("http://%s/static", r.Host),
+			)
+
+			// 将更新后的内容写回到响应体
+			resp.Body = ioutil.NopCloser(strings.NewReader(updatedBody))
+			resp.ContentLength = int64(len(updatedBody))
+			resp.Header.Set("Content-Length", fmt.Sprint(len(updatedBody)))
 		}
 		return nil
 	}
-
-	// 使用代理将请求转发到目标服务器
-	proxy.ServeHTTP(w, r)
-}
-
-// 写日志到文件
+	
+	// 写日志到文件
 func writeLog(entry string) {
 	logFile, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
