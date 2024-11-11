@@ -102,6 +102,9 @@ func handleHostProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
+	// 记录后台机的响应状态码
+	log.Printf("Received response from backend %s with status %d", backend, resp.StatusCode)
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		http.Error(w, "Failed to read backend response", http.StatusInternalServerError)
@@ -109,6 +112,7 @@ func handleHostProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 将响应状态和内容传递给客户端
 	w.WriteHeader(resp.StatusCode)
 	w.Write(body)
 }
