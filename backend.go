@@ -127,39 +127,62 @@ func handleBackendProxy(w http.ResponseWriter, r *http.Request) {
 
 // 检查是否为静态资源请求
 func isStaticResource(path string) bool {
-	// 简单检查请求路径是否包含常见静态资源扩展名
-	ext := strings.ToLower(path)
-	return strings.HasSuffix(ext, ".jpg") || strings.HasSuffix(ext, ".jpeg") ||
-		strings.HasSuffix(ext, ".png") || strings.HasSuffix(ext, ".gif") ||
-		strings.HasSuffix(ext, ".css") || strings.HasSuffix(ext, ".js") ||
-		strings.HasSuffix(ext, ".woff") || strings.HasSuffix(ext, ".woff2")
+	// 检查路径是否以 /static 或 /assets 开头
+	if strings.HasPrefix(path, "/static") || strings.HasPrefix(path, "/assets") {
+		log.Printf("Detected static resource request: %s", path)
+		return true
+	}
+	return false
 }
 
 // 处理静态资源的代理请求
 func handleStaticResourceProxy(w http.ResponseWriter, r *http.Request) {
-	// 构造静态资源的 URL
-	staticURL := fmt.Sprintf("%s%s", imageProxyURL, r.URL.Path)
+	// 构造静态资源的 URL，移除 /static 前缀
+	path := strings.TrimPrefix(r.URL.Path, "/static")
+	staticURL := fmt.Sprintf("https://image.tmdb.org%s", path)
+	
+	log.Printf("Proxying static resource: %s -> %s", r.URL.Path, staticURL)
 
-	// 使用自定义的 HTTP 客户端发起静态资源请求
+	// 创建代理请求
 	client := &http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},
 	}
-	resp, err := client.Get(staticURL)
+	
+	req, err := http.NewRequest("GET", staticURL, nil)
 	if err != nil {
-		http.Error(w, "Failed to fetch static resource", http.StatusBadGateway)
+		log.Printf("Error creating request for static resource: %v", err)
+		http.Error(w, "Failed to create request", http.StatusInternalServerError)
+		return
+	}
+
+	// 添加必要的请求头
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Accept-Encoding", "gzip, deflate")
+	
+	resp, err := client.Do(req)
+	if err != nil {
 		log.Printf("Error fetching static resource %s: %v", staticURL, err)
+		http.Error(w, "Failed to fetch static resource", http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
 
-	// 设置响应头并转发静态资源的内容
+	// 复制响应头
 	for key, values := range resp.Header {
 		for _, value := range values {
 			w.Header().Add(key, value)
 		}
 	}
+
+	// 设置 CORS 头
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+
+	// 写入响应状态和内容
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
 }
