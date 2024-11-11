@@ -80,40 +80,62 @@ func handleBackendProxy(w http.ResponseWriter, r *http.Request) {
 	// ModifyResponse 用于捕获 HTML 响应并替换资源链接
 	proxy.ModifyResponse = func(resp *http.Response) error {
 		log.Printf("Response status: %d", resp.StatusCode)
-		// 检查内容类型是否为 HTML
-		if strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
+		
+		// 检查内容类型
+		contentType := resp.Header.Get("Content-Type")
+		if strings.Contains(contentType, "text/html") || strings.Contains(contentType, "application/json") {
 			body, err := ioutil.ReadAll(resp.Body)
 			if err != nil {
 				return err
 			}
-			// 关闭原始响应体并替换为新的内容
 			resp.Body.Close()
 
-			// 将目标 URL 替换为代理服务器地址
-			updatedBody := strings.ReplaceAll(
-				string(body),
+			// 替换所有可能的图片域名
+			updatedBody := string(body)
+			
+			// 替换主域名
+			updatedBody = strings.ReplaceAll(
+				updatedBody,
 				"https://www.themoviedb.org",
 				fmt.Sprintf("http://%s", r.Host),
 			)
-
-			// 根据环境变量设置静态资源地址
-			if staticMode == "true" {
-				// 静态模式：所有静态资源指向本地代理
-				updatedBody = strings.ReplaceAll(
-					updatedBody,
-					"https://image.tmdb.org",
-					fmt.Sprintf("http://%s/static", r.Host),
-				)
-			} else {
-				// 非静态模式：静态资源指向指定的代理地址
-				updatedBody = strings.ReplaceAll(
-					updatedBody,
-					"https://image.tmdb.org",
-					imageProxyURL,
-				)
+			
+			// 替换图片域名（包括所有可能的变体）
+			imageDomains := []string{
+				"https://image.tmdb.org",
+				"http://image.tmdb.org",
+				"https://www.image.tmdb.org",
+				"http://www.image.tmdb.org",
 			}
+			
+			for _, domain := range imageDomains {
+				if staticMode == "true" {
+					updatedBody = strings.ReplaceAll(
+						updatedBody,
+						domain,
+						fmt.Sprintf("http://%s/static", r.Host),
+					)
+				} else {
+					updatedBody = strings.ReplaceAll(
+						updatedBody,
+						domain,
+						imageProxyURL,
+					)
+				}
+			}
+			
+			// 替换 t/p 路径格式的图片 URL
+			updatedBody = strings.ReplaceAll(
+				updatedBody,
+				`"t/p/`,
+				fmt.Sprintf(`"%s/t/p/`, imageProxyURL),
+			)
 
-			// 将更新后的内容写回到响应体
+			// 记录替换情况
+			log.Printf("Image proxy URL: %s", imageProxyURL)
+			log.Printf("Content modified: %v", len(updatedBody) != len(body))
+
+			// 更新响应
 			resp.Body = ioutil.NopCloser(strings.NewReader(updatedBody))
 			resp.ContentLength = int64(len(updatedBody))
 			resp.Header.Set("Content-Length", fmt.Sprint(len(updatedBody)))
