@@ -1,0 +1,5 @@
+services:
+  proxy-server-1:
+    build: .
+    ports:
+      - "3666:3666"
