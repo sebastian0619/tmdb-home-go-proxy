@@ -32,6 +32,7 @@ var (
 	backendHosts = strings.Split(getEnv("BACKEND_HOSTS", "203.0.113.10:3666,203.0.113.11:3666,203.0.113.12:3666"), ",")
 	hostWeights  = make(map[string]int)
 	weightMutex  sync.Mutex
+	logFilePath  = "proxy_service.log"
 )
 
 // 初始化权重
@@ -39,6 +40,22 @@ func initWeights() {
 	for _, host := range backendHosts {
 		hostWeights[host] = 1 // 初始权重设为 1
 	}
+}
+
+// 写日志
+func writeLog(entry string) {
+	logFileMutex := &sync.Mutex{}
+	logFileMutex.Lock()
+	defer logFileMutex.Unlock()
+
+	logFile, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatalf("Failed to open log file: %v", err)
+	}
+	defer logFile.Close()
+
+	log.SetOutput(logFile)
+	log.Println(entry)
 }
 
 // 测速函数
@@ -183,17 +200,22 @@ func handleBackendProxy(w http.ResponseWriter, r *http.Request) {
 	proxy.ServeHTTP(w, r)
 }
 
+// 后台机的日志处理函数
+func handleLogs(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, logFilePath)
+}
+
 func main() {
 	if role == "host" {
+		// 主机启动：初始化权重和测速定时任务
 		initWeights()
 		go startLatencyMeasurement()
 		http.HandleFunc("/", handleHostProxy)
 		fmt.Printf("Host server running on port %s\n", port)
 	} else if role == "backend" {
+		// 后台机启动：代理请求和日志接口
 		http.HandleFunc("/", handleBackendProxy)
-		http.HandleFunc("/logs", func(w http.ResponseWriter, r *http.Request) {
-			http.ServeFile(w, r, "proxy_service.log")
-		})
+		http.HandleFunc("/logs", handleLogs)
 		fmt.Printf("Backend server running on port %s, forwarding to %s\n", port, targetURL)
 	} else {
 		log.Fatalf("Unknown role: %s. Use 'host' or 'backend'.", role)
