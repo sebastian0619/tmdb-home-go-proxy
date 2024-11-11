@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -24,7 +25,7 @@ func getEnv(key, defaultValue string) string {
 var (
 	targetURL      = getEnv("TARGET_URL", "https://www.themoviedb.org")
 	logFilePath    = "proxy_service.log"
-	staticMode     = getEnv("STATIC_MODE", "false")             // 环境变量，是否启用静态模式
+	staticMode     = getEnv("STATIC_MODE", "false")             // 是否启用静态模式
 	imageProxyURL  = getEnv("IMAGE_PROXY_URL", "https://image.tmdb.org") // 静态资源代理 URL
 )
 
@@ -35,6 +36,12 @@ func initBackend() {
 
 // 后台机的代理处理函数
 func handleBackendProxy(w http.ResponseWriter, r *http.Request) {
+	// 检查请求是否为静态资源
+	if staticMode == "true" && isStaticResource(r.URL.Path) {
+		handleStaticResourceProxy(w, r)
+		return
+	}
+
 	// 解析目标 URL
 	target, err := url.Parse(targetURL)
 	if err != nil {
@@ -110,6 +117,45 @@ func handleBackendProxy(w http.ResponseWriter, r *http.Request) {
 
 	// 使用代理将请求转发到目标服务器
 	proxy.ServeHTTP(w, r)
+}
+
+// 检查是否为静态资源请求
+func isStaticResource(path string) bool {
+	// 简单检查请求路径是否包含常见静态资源扩展名
+	ext := strings.ToLower(path)
+	return strings.HasSuffix(ext, ".jpg") || strings.HasSuffix(ext, ".jpeg") ||
+		strings.HasSuffix(ext, ".png") || strings.HasSuffix(ext, ".gif") ||
+		strings.HasSuffix(ext, ".css") || strings.HasSuffix(ext, ".js") ||
+		strings.HasSuffix(ext, ".woff") || strings.HasSuffix(ext, ".woff2")
+}
+
+// 处理静态资源的代理请求
+func handleStaticResourceProxy(w http.ResponseWriter, r *http.Request) {
+	// 构造静态资源的 URL
+	staticURL := fmt.Sprintf("%s%s", imageProxyURL, r.URL.Path)
+
+	// 使用自定义的 HTTP 客户端发起静态资源请求
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+	resp, err := client.Get(staticURL)
+	if err != nil {
+		http.Error(w, "Failed to fetch static resource", http.StatusBadGateway)
+		log.Printf("Error fetching static resource %s: %v", staticURL, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// 设置响应头并转发静态资源的内容
+	for key, values := range resp.Header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
 }
 
 // 写日志到文件
