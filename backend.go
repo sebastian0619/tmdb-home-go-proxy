@@ -4,25 +4,33 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strings"
 )
 
-// 后台机设置
-var (
-	targetURL   = getEnv("TARGET_URL", "https://www.themoviedb.org")
-	logFilePath = "proxy_service.log"
-)
+// 获取环境变量的工具函数
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+// 目标 URL
+var targetURL = getEnv("TARGET_URL", "https://www.themoviedb.org")
+var logFilePath = "proxy_service.log"
 
 // 初始化后台机设置
 func initBackend() {
 	fmt.Println("Initializing backend service...")
 }
 
-// 代理到目标 URL 的处理函数
+// 后台机的代理处理函数
 func handleBackendProxy(w http.ResponseWriter, r *http.Request) {
 	// 解析目标 URL
 	target, err := url.Parse(targetURL)
@@ -31,13 +39,13 @@ func handleBackendProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 使用默认的 SingleHostReverseProxy 进行代理配置
+	// 使用 httputil.NewSingleHostReverseProxy 创建代理配置
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	proxy.Transport = &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 
-	// 设置代理的 Director 方法
+	// 设置代理的 Director 方法，修改请求以指向目标服务器
 	proxy.Director = func(req *http.Request) {
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
@@ -45,7 +53,7 @@ func handleBackendProxy(w http.ResponseWriter, r *http.Request) {
 		req.URL.Path = r.URL.Path
 		req.URL.RawQuery = r.URL.RawQuery
 
-		// 设置请求头以模拟浏览器请求
+		// 设置必要的请求头以模仿真实浏览器
 		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36")
 		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 		req.Header.Set("Accept-Encoding", "gzip, deflate, br")
@@ -62,7 +70,7 @@ func handleBackendProxy(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return err
 			}
-			// 关闭响应体并替换为新的内容
+			// 关闭原始响应体并替换为新的内容
 			resp.Body.Close()
 
 			// 将目标 URL 替换为代理服务器地址
@@ -85,8 +93,12 @@ func handleBackendProxy(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	}
-	
-	// 写日志到文件
+
+	// 使用代理将请求转发到目标服务器
+	proxy.ServeHTTP(w, r)
+}
+
+// 写日志到文件
 func writeLog(entry string) {
 	logFile, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -98,7 +110,7 @@ func writeLog(entry string) {
 	log.Println(entry)
 }
 
-// 后台机日志接口
+// 后台机日志接口，用于获取日志内容
 func handleLogs(w http.ResponseWriter, r *http.Request) {
 	logFile, err := os.Open(logFilePath)
 	if err != nil {
@@ -107,7 +119,7 @@ func handleLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	defer logFile.Close()
 
-	data, err := io.ReadAll(logFile)
+	data, err := ioutil.ReadAll(logFile)
 	if err != nil {
 		http.Error(w, "Failed to read log file", http.StatusInternalServerError)
 		return
@@ -115,12 +127,4 @@ func handleLogs(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.Write(data)
-}
-
-// 获取环境变量
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
 }
