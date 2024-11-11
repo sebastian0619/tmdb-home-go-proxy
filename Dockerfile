@@ -4,6 +4,9 @@ FROM golang:1.20-alpine AS builder
 # 设置工作目录
 WORKDIR /app
 
+# 初始化 Go 模块并创建 go.mod 文件
+RUN go mod init proxy_service
+
 # 将源代码复制到工作目录中
 COPY main.go .
 COPY backend.go .
