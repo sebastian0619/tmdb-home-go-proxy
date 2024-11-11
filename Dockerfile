@@ -5,10 +5,10 @@ FROM golang:1.20-alpine AS builder
 WORKDIR /app
 
 # 复制代码文件到镜像中
-COPY proxy_server.go .
+COPY proxy_service.go .
 
 # 编译 Go 代码，生成二进制文件
-RUN go build -o proxy_server proxy_server.go
+RUN go build -o proxy_service proxy_service.go
 
 # 创建一个更小的运行镜像
 FROM alpine:latest
@@ -17,10 +17,10 @@ FROM alpine:latest
 WORKDIR /root/
 
 # 从构建镜像中复制二进制文件
-COPY --from=builder /app/proxy_server .
+COPY --from=builder /app/proxy_service .
 
 # 设置端口
 EXPOSE 3666
 
 # 启动代理服务器
-CMD ["./proxy_server"]
+CMD ["./proxy_service"]

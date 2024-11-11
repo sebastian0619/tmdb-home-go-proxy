@@ -1,5 +1,19 @@
 services:
-  proxy-server-1:
+  # 主机
+  tmdb-proxy-home:
     build: .
+    environment:
+      - ROLE=host
+      - BACKEND_HOSTS=192.168.1.10:3666,192.168.1.11:3666,192.168.1.12:3666  # 多个后台机的 IP:端口
+    command: ["./proxy_service"]
+
+# 后台机
+services:
+  backend:
+    build: .
+    environment:
+      - ROLE=backend
+      - TARGET_URL=https://www.themoviedb.org
+      - PORT=3666
     ports:
       - "3666:3666"
