@@ -7,6 +7,8 @@ services:
       - ROLE=host
       - PORT=3666
       - BACKEND_HOSTS=192.168.1.10:3666,192.168.1.11:3666,192.168.1.12:3666  # 替换为后台机的实际 IP
+     # - STATIC_MODE=true  # 或 false，根据需求设置
+      - IMAGE_PROXY_URL=https://custom-image-proxy.com  # STATIC_MODE 为 false 时有效
     ports:
       - "3666:3666"
     command: ["./proxy_service"]

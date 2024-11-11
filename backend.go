@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -20,9 +21,13 @@ func getEnv(key, defaultValue string) string {
 	return defaultValue
 }
 
-// 目标 URL
-var targetURL = getEnv("TARGET_URL", "https://www.themoviedb.org")
-var logFilePath = "proxy_service.log"
+// 全局配置
+var (
+	targetURL      = getEnv("TARGET_URL", "https://www.themoviedb.org")
+	logFilePath    = "proxy_service.log"
+	staticMode     = getEnv("STATIC_MODE", "false")             // 环境变量，是否启用静态模式
+	imageProxyURL  = getEnv("IMAGE_PROXY_URL", "https://image.tmdb.org") // 静态资源代理 URL
+)
 
 // 初始化后台机设置
 func initBackend() {
@@ -78,12 +83,23 @@ func handleBackendProxy(w http.ResponseWriter, r *http.Request) {
 				"https://www.themoviedb.org",
 				fmt.Sprintf("http://%s", r.Host),
 			)
-			// 替换静态资源地址（如图片、CSS、JavaScript）
-			updatedBody = strings.ReplaceAll(
-				updatedBody,
-				"https://image.tmdb.org",
-				fmt.Sprintf("http://%s/static", r.Host),
-			)
+
+			// 根据环境变量设置静态资源地址
+			if staticMode == "true" {
+				// 静态模式：所有静态资源指向本地代理
+				updatedBody = strings.ReplaceAll(
+					updatedBody,
+					"https://image.tmdb.org",
+					fmt.Sprintf("http://%s/static", r.Host),
+				)
+			} else {
+				// 非静态模式：静态资源指向指定的代理地址
+				updatedBody = strings.ReplaceAll(
+					updatedBody,
+					"https://image.tmdb.org",
+					imageProxyURL,
+				)
+			}
 
 			// 将更新后的内容写回到响应体
 			resp.Body = ioutil.NopCloser(strings.NewReader(updatedBody))
