@@ -17,3 +17,4 @@ services:
       - PORT=3666
     ports:
       - "3666:3666"
+    command: ["./proxy_service"]
