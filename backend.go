@@ -36,8 +36,12 @@ func initBackend() {
 
 // 后台机的代理处理函数
 func handleBackendProxy(w http.ResponseWriter, r *http.Request) {
+	// 添加请求日志
+	log.Printf("Received request: %s %s", r.Method, r.URL.Path)
+
 	// 检查请求是否为静态资源
 	if staticMode == "true" && isStaticResource(r.URL.Path) {
+		log.Printf("Handling static resource: %s", r.URL.Path)
 		handleStaticResourceProxy(w, r)
 		return
 	}
@@ -45,6 +49,7 @@ func handleBackendProxy(w http.ResponseWriter, r *http.Request) {
 	// 解析目标 URL
 	target, err := url.Parse(targetURL)
 	if err != nil {
+		log.Printf("Error parsing target URL: %v", err)
 		http.Error(w, "Invalid target URL", http.StatusInternalServerError)
 		return
 	}
@@ -74,6 +79,7 @@ func handleBackendProxy(w http.ResponseWriter, r *http.Request) {
 
 	// ModifyResponse 用于捕获 HTML 响应并替换资源链接
 	proxy.ModifyResponse = func(resp *http.Response) error {
+		log.Printf("Response status: %d", resp.StatusCode)
 		// 检查内容类型是否为 HTML
 		if strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
 			body, err := ioutil.ReadAll(resp.Body)
